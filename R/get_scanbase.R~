@@ -1,0 +1,156 @@
+#' @export
+read_scanbase <- function(){
+  sbase <- googlesheets::gs_title("scanbase_40um")
+  list(scans = googlesheets::gs_read(sbase, "Scans")
+     , studies = googlesheets::gs_read(sbase, "Studies"))
+}
+
+#' @export
+load_pydpiper_results <-
+  function(ppd
+         , common = "/hpf/largeprojects/MICe/scanbase/pipeline-40um/scanbase_second_level_nlin/scanbase_second_level-nlin-3.mnc"
+         , clobber = FALSE){
+    
+    transforms <- read.csv(file.path(ppd, "transforms.csv")
+                         , stringsAsFactors = FALSE)
+
+    determinants <-
+      read.csv(file.path(ppd, "determinants.csv")
+             , stringsAsFactors = FALSE) %>%
+      filter(fwhm == 0.2)
+
+    column_mapping <-
+      c(
+        Distortion_Corrected_Scan = "common_space_file"
+      , Scan_To_Study_Absolute_Jacobians = "log_full_det"
+      , Scan_To_Study_Relative_Jacobians = "log_nlin_det"
+      , Scan_To_Global_Absolute_Jacobians = "log_full_det_common"
+      , Scan_To_Global_Relative_Jacobians = "log_nlin_det_common"
+      , Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians = "unknown"
+      , Scan_To_Study_Global_Space_Resampled_Relative_Jacobians = "unknown"
+      , Rigid_Transform = "rigid_xfm"
+      , Rigid_Filepath = "lsq6_file"
+      , Scan_To_Study_Transform = "lsq12_nlin_xfm"
+      , Labels = "unknown"
+      )
+
+    known_columns <- discard(column_mapping, ~ . == "unknown")
+
+    full_data <-
+      inner_join(transforms, determinants
+               , by = c("lsq12_nlin_xfm" = "inv_xfm")) %>%
+      rename(
+        !!! map(known_columns, as.symbol)
+      ) %>%
+      mutate_at(
+        .vars = vars(!!!names(known_columns), overall_xfm_to_common)
+      , .funs = funs(
+          ifelse(grepl("^/", .), ., file.path(ppd, .)))
+      ) %>%
+      mutate(Processed_dir = dirname(dirname(Scan_To_Study_Relative_Jacobians))
+           , Labels = map_chr(file.path(Processed_dir, "voted.mnc")
+                            , function(f){
+                              if(file.exists(f)){
+                                return(f)
+                              } else {
+                                stop("these subjects have not been processed with MAGeT")
+                              }
+                            }))
+    
+
+    apply_xfm_wrapper <- function(xfm, input, suffix, like, clobber = TRUE){
+      dir <- dirname(input)
+      subject <- basename(dirname(dir)) ## Subject processed dir
+      output <- file.path(dir, paste0(subject, "_", suffix))
+      
+      apply_xfm(xfm, input, output, like, clobber = clobber)
+    }
+    
+    full_data %>%
+      mutate(
+        xfm_nlin3_to_global =
+          map_chr(overall_xfm_to_common, ~ global_from_concat(., "nlin3-to-global.xfm"
+                                                            , clobber = clobber))
+      , Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians =
+          future_map2_chr(xfm_nlin3_to_global, Scan_To_Study_Absolute_Jacobians
+                 , ~ apply_xfm_wrapper(.x, .y, "scan_to_study_abs_jacobians_resampled_global.mnc"
+                                     , like = common
+                                     , clobber = clobber))
+      , Scan_To_Study_Global_Space_Resampled_Relative_Jacobians =
+          future_map2_chr(xfm_nlin3_to_global, Scan_To_Study_Relative_Jacobians
+                 , ~ apply_xfm_wrapper(.x, .y, "scan_to_study_rel_jacobians_resampled_global.mnc"
+                                     , like = common
+                                     , clobber = clobber))
+      ) %>%
+      select(!!! map(names(column_mapping), as.symbol))
+}
+
+#' @export
+unconcat_xfm <- function(xfm){
+  lines <- readLines(xfm)
+  xfm_starts <- grep("Transform_Type", lines)
+
+  header <- lines[1:(xfm_starts[1] - 1)]
+  xfms <-
+    xfm_starts %>%
+    { map2(., lead(., default = length(lines) + 1) - 1
+         , function(b,e) lines[b:e]) }
+                 
+  list(header = header, xfms = xfms)
+}
+
+#' @export
+reconstruct_xfm <- function(unc_xfms, which, file = NULL
+                           , clobber = TRUE){
+  header <- c(unc_xfms$header %>% { .[!grepl("^ *$", .)] }
+            , glue("%{Sys.Date()}>>> Unconcat in R and reassembled from pieces:",
+                   " {paste0(which, collapse = ', ')}"))
+
+  xfm <- c(header, "", unlist(unc_xfms$xfms[which]))
+  if(!is.null(file)){
+    if(!file.exists(file) || clobber){
+      cat(xfm, file = file, sep = "\n")
+      return(invisible(xfm))
+    }
+  }
+
+  xfm
+}
+
+#' ((scan->nlin)->global) -> (nlin->global)
+#'
+#' Deconstruct a scan to global transform into an nlin to global transform
+#' The output file is created in the same directory as the input file.
+#' @param scan_to_global path to an xfm file composed of a nonlinear scan->nlin and a nonlinear
+#' nlin->global. The xfm file should have four component transforms linear->grid->linear->grid.
+#' The final two are extracted and written out.
+#' @param nlin_to_global A filename for the resultant transform, to be written to the directory
+#' of `scan_to_global`
+#' @return the path to the output file invisibly.
+#' @export
+global_from_concat <- function(scan_to_global, nlin_to_global
+                             , clobber = TRUE){
+  dir <- dirname(scan_to_global)
+  if(grepl("/", nlin_to_global)) stop("nlin_to_global cannot be a path")
+  nlin_to_global <- file.path(dir, nlin_to_global)
+  
+  s2g <- unconcat_xfm(scan_to_global)
+  reconstruct_xfm(s2g, 3:4, file = nlin_to_global, clobber = clobber)
+  invisible(nlin_to_global)
+}
+
+#' Apply an xfm to a minc file
+#'
+#' @param xfm The transform
+#' @param input The minc to transform
+#' @param output an output file
+#' @param like a like file
+#' @return the transformed file invisibly
+#' @export
+apply_xfm <- function(xfm, input, output, like, clobber = TRUE){
+  if(!file.exists(output) || clobber)
+    system(
+      glue("mincresample -transform {xfm} -clobber {input} -like {like} {output}"))
+
+  invisible(output)
+}

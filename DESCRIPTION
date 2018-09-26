@@ -8,6 +8,10 @@ Encoding: UTF-8
 LazyData: true
 ByteCompile: true
 Imports: 
-    googlesheets
+    googlesheets,
+    dplyr,
+    magrittr,
+    glue,
+    furrr
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 6.0.1
