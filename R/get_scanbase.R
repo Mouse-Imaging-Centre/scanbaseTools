@@ -34,6 +34,19 @@ load_pydpiper_results <-
     transforms <- read.csv(file.path(ppd, "transforms.csv")
                          , stringsAsFactors = FALSE)
 
+    if(is.null(transforms$overall_xfm_to_common)){
+      if(is.null(transforms$overall_xfm_to_common_inv)){
+        stop("Neither overall_xfm_to_common nor overall_xfm_to_common_inv found in your transforms.csv, can't compute determinants.\\n Aborting.")
+      } else {
+        forwards <- transforms$overall_xfm_to_common_inv %>% sub("_inverted\\.xfm", ".xfm", .)
+        
+        if(!all(file.exists(forwards)))
+          stop("Only overall_xfm_to_common_inv found in transforms, removing `_inverted` suffix does not produce valid files.\\n Aborting.")
+        
+        transforms$overall_xfm_to_common <- forwards
+      }
+    }
+
     determinants <-
       read.csv(file.path(ppd, "determinants.csv")
              , stringsAsFactors = FALSE) %>%
@@ -57,7 +70,7 @@ load_pydpiper_results <-
     known_columns <- keep(column_mapping, ~ . %in% names(transforms) || . %in% names(determinants))
 
     full_data <-
-      inner_join(transforms, determinants
+      inner_join(transforms, determinanst1
                , by = c("lsq12_nlin_xfm" = "inv_xfm")) %>%
       rename(
         !!! map(known_columns, as.symbol)
