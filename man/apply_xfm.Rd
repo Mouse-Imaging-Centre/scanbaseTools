@@ -4,7 +4,7 @@
 \alias{apply_xfm}
 \title{Apply an xfm to a minc file}
 \usage{
-apply_xfm(xfm, input, output, like, clobber = TRUE)
+apply_xfm(xfm, input, output, like, clobber = TRUE, dry = FALSE)
 }
 \arguments{
 \item{xfm}{The transform}

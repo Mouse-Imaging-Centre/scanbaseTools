@@ -12,11 +12,24 @@ read_scanbase <- function(db = "test_scanbase_40um"){
        )
 }
 
+#' 
+
 #' @export
 load_pydpiper_results <-
   function(ppd
          , common = "/hpf/largeprojects/MICe/scanbase/pipeline-40um/scanbase_second_level_nlin/scanbase_second_level-nlin-3.mnc"
-         , clobber = FALSE){
+         , mask = sub("\\.mnc$", "_mask.mnc", common)
+         , fwhm = 0.2
+         , clobber = FALSE
+         , dry = FALSE){
+
+    ppd <- normalizePath(ppd, mustWork = TRUE)
+    
+    if(!file.exists(common))
+      stop("Unable to find your common space file: ", common)
+    
+    if(!file.exists(mask))
+      stop("Unable to find your common space mask: ", mask)
     
     transforms <- read.csv(file.path(ppd, "transforms.csv")
                          , stringsAsFactors = FALSE)
@@ -41,7 +54,7 @@ load_pydpiper_results <-
       , Labels = "unknown"
       )
 
-    known_columns <- discard(column_mapping, ~ . == "unknown")
+    known_columns <- keep(column_mapping, ~ . %in% names(transforms) || . %in% names(determinants))
 
     full_data <-
       inner_join(transforms, determinants
@@ -63,33 +76,36 @@ load_pydpiper_results <-
                                 stop("these subjects have not been processed with MAGeT")
                               }
                             }))
-    
 
-    apply_xfm_wrapper <- function(xfm, input, suffix, like, clobber = TRUE){
-      dir <- dirname(input)
-      subject <- basename(dirname(dir)) ## Subject processed dir
-      output <- file.path(dir, paste0(subject, "_", suffix))
-      
-      apply_xfm(xfm, input, output, like, clobber = clobber)
-    }
-
-    ## FIX
     scans <-
       full_data %>%
       mutate(
         xfm_nlin3_to_global =
-          map_chr(overall_xfm_to_common, ~ global_from_concat(., "nlin3-to-global.xfm"
-                                                            , clobber = clobber))
-      , Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians =
-          future_map2_chr(xfm_nlin3_to_global, Scan_To_Study_Absolute_Jacobians
-                 , ~ apply_xfm_wrapper(.x, .y, "scan_to_study_abs_jacobians_resampled_global.mnc"
-                                     , like = common
-                                     , clobber = clobber))
+          map_chr(overall_xfm_to_common
+                , ~ global_from_concat(., "nlin3-to-global.xfm"
+                                     , clobber = clobber
+                                    ,  dry = dry))) %>%
+      mutate(
+        Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians =
+          future_map2_chr(overall_xfm_to_common
+                       , basename(Processed_dir)
+                       , ~ compute_inverse_determinants(.x
+                                                      , "abs"
+                                                      , like = common
+                                                      , output = .y
+                                                      , mask = mask
+                                                      , clobber = clobber
+                                                      , dry = dry))
       , Scan_To_Study_Global_Space_Resampled_Relative_Jacobians =
-          future_map2_chr(xfm_nlin3_to_global, Scan_To_Study_Relative_Jacobians
-                 , ~ apply_xfm_wrapper(.x, .y, "scan_to_study_rel_jacobians_resampled_global.mnc"
-                                     , like = common
-                                     , clobber = clobber))
+          future_map2_chr(overall_xfm_to_common
+                       , basename(Processed_dir)
+                       , ~ compute_inverse_determinants(.x
+                                                      , "rel"
+                                                      , like = common
+                                                      , output = .y
+                                                      , mask = mask
+                                                      , clobber = clobber
+                                                      , dry = dry))
       ) %>%
       select(!!! map(names(column_mapping), as.symbol))
 
@@ -104,6 +120,18 @@ load_pydpiper_results <-
 
     get_first_command <-
       function(){
+        quiet_readLines <- function(x){
+          withCallingHandlers(
+            readLines(x)
+          , warning = function(w){
+            if(!grepl("incomplete final line", w)){
+              warning(w)
+            } else {
+              invokeRestart("muffleWarning")
+            }
+          })
+        }
+          
         Sys.glob(file.path(ppd, "*command-and-version*")) %>%
           setNames(command_and_version_to_date(.), .) %>%
           sort(decreasing = TRUE) %>%
@@ -122,7 +150,7 @@ load_pydpiper_results <-
 
       files <-
         xfm %>%
-        scan(what = character()) %>%
+        scan(what = character(), quiet = TRUE) %>%
         grep("*.mnc", ., value = TRUE) %>%
         file.path(ppd, .) %>%
         c(xfm, .)
@@ -136,11 +164,11 @@ load_pydpiper_results <-
       })
 
       study_to_global <- "study_to_global.xfm"
-      global_from_concat(new_files[1], study_to_global)
+      global_from_concat(new_files[1], study_to_global, clobber = clobber, dry = dry)
 
       file.path(ppd, study_to_global)
     }
-        
+
     study <-
       data_frame(Study_Average =
                    Sys.glob(file.path(ppd, "*nlin", "/*nlin-3.mnc"))
@@ -154,7 +182,7 @@ load_pydpiper_results <-
 
     if(nrow(study) != 1)
       stop("Error identifying study mask or average \n"
-         , "Should match <pydpiper_dir>/*nlin/*nlin-3(_mask)?.mnc")
+         , "Should match <pydpiper_dir>/*nlin/*nlin-3(_mask)?.mnc")        
     
     list(scans = scans, study = study)
   }
@@ -165,10 +193,11 @@ load_pydpiper_results <-
 upload_study <- function(ppd, scan, study, treatments, genotypes
                        , db = "test_scanbase_40um"
                        , common = "/hpf/largeprojects/MICe/scanbase/pipeline-40um/scanbase_second_level_nlin/scanbase_second_level-nlin-3.mnc"
+                       , mask = sub("\\.mnc$", "_mask.mnc", common)
                        , clobber = FALSE ){
 
   sb <- read_scanbase(db)
-  pp <- load_pydpiper_results(ppd, common, clobber)
+  pp <- load_pydpiper_results(ppd, common, mask = mask, clobber = clobber)
   
   scanf <- read.csv(scan, stringsAsFactors = FALSE)
   studf <- read.csv(study, stringsAsFactors = FALSE) %>% bind_cols(pp$study)
@@ -264,7 +293,7 @@ unconcat_xfm <- function(xfm){
 
 #' @export
 reconstruct_xfm <- function(unc_xfms, which, file = NULL
-                           , clobber = TRUE){
+                           , clobber = TRUE, dry = FALSE){
   header <- c(unc_xfms$header %>% { .[!grepl("^ *$", .)] }
             , glue("%{Sys.Date()}>>> Unconcat in R and reassembled from pieces:",
                    " {paste0(which, collapse = ', ')}"))
@@ -272,7 +301,11 @@ reconstruct_xfm <- function(unc_xfms, which, file = NULL
   xfm <- c(header, "", unlist(unc_xfms$xfms[which]))
   if(!is.null(file)){
     if(!file.exists(file) || clobber){
-      cat(xfm, file = file, sep = "\n")
+      if(dry){
+        cat("Generating reconstructed xfm ", file, "\n")
+      } else {
+        cat(xfm, file = file, sep = "\n")
+      }
       return(invisible(xfm))
     }
   }
@@ -289,16 +322,18 @@ reconstruct_xfm <- function(unc_xfms, which, file = NULL
 #' The final two are extracted and written out.
 #' @param nlin_to_global A filename for the resultant transform, to be written to the directory
 #' of `scan_to_global`
+#' @param dry whether to do a dry run, meaning not run the command.
 #' @return the path to the output file invisibly.
 #' @export
 global_from_concat <- function(scan_to_global, nlin_to_global
-                             , clobber = TRUE){
+                             , clobber = TRUE, dry = FALSE){
   dir <- dirname(scan_to_global)
   if(grepl("/", nlin_to_global)) stop("nlin_to_global cannot be a path")
   nlin_to_global <- file.path(dir, nlin_to_global)
   
   s2g <- unconcat_xfm(scan_to_global)
-  reconstruct_xfm(s2g, 3:4, file = nlin_to_global, clobber = clobber)
+  reconstruct_xfm(s2g, 3:4, file = nlin_to_global, clobber = clobber
+                , dry = dry)
   invisible(nlin_to_global)
 }
 
@@ -310,15 +345,60 @@ global_from_concat <- function(scan_to_global, nlin_to_global
 #' @param like a like file
 #' @return the transformed file invisibly
 #' @export
-apply_xfm <- function(xfm, input, output, like, clobber = TRUE){
+apply_xfm <- function(xfm, input, output, like, clobber = TRUE
+                    , dry = FALSE){
+  
+  runner <- `if`(dry, function(x) cat(x, "\n"), system)
+  
   if(!file.exists(output) || clobber)
-    system(
-      glue("mincresample -transform {xfm} -clobber {input} -like {like} {output}"))
+    runner(
+      glue("mincresample -transform {xfm} {if(clobber) '-clobber' else ''} "
+      , " {input} -like {like} {output}"))
 
   invisible(output)
 }
 
-compute_determinants <-
-  function(xfm, output, mask, clobber = TRUE){
+#' Compute the determinants of nonlinear transform
+#' @export
+compute_inverse_determinants <-
+  function(xfm, type, like, mask
+         , output = NULL
+         , clobber = TRUE
+         , fwhm = 0.2
+         , dry = FALSE
+         , tempdir = tempfile(pattern = "compute_determinants")
+           ){
 
+    if(! type %in% c("abs", "rel"))
+      stop("You must specify \"abs\"-olute or \"rel\"-ative jacobians with the `type` "
+         , "argument. You specified ", type)
+    
+    if(is.null(output))
+      output <- sub("\\.[^.]$", "", like)
+
+    if(!grepl("^/", output))
+      output <- file.path(dirname(xfm), output)
+
+    output_path <- glue("{output}_log_{type}_abs_fwhm{fwhm}.mnc")
+    
+    if(file.exists(output_path) && !clobber)
+      return(invisible(output))
+    
+    cmd <- 
+      glue("compute_determinant.py --transform {xfm} "
+         , "--inverse --smooth {fwhm} "
+         , "--like {like} --mask {mask} "
+         , "{if(type == 'rel') '--non-linear-only' else ''} "
+         , "--temp-dir {tempdir} "
+         , "--determinant {output_path}"
+           )
+
+    runner <-
+      `if`(dry
+         , function(cmd) cat(cmd, "\n")
+         , system)
+
+    runner(cmd)
+
+    invisible(output_path)
   }
