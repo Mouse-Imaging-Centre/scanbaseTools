@@ -70,7 +70,7 @@ load_pydpiper_results <-
       , Rigid_Transform = "rigid_xfm"
       , Rigid_Filepath = "lsq6_file"
       , Scan_To_Study_Transform = "lsq12_nlin_xfm"
-      , Labels = "unknown"
+      , Labels = "label_file"
       )
 
     known_columns <- keep(column_mapping, ~ . %in% names(transforms) || . %in% names(determinants))
@@ -87,14 +87,18 @@ load_pydpiper_results <-
           ifelse(grepl("^/", .), ., file.path(ppd, .)))
       ) %>%
       mutate(Processed_dir = dirname(dirname(Scan_To_Study_Relative_Jacobians))
-           , Labels = map_chr(file.path(Processed_dir, "voted.mnc")
+           , Labels =
+                 `if`(is.null(.$Labels)
+                    , map_chr(file.path(Processed_dir, "voted.mnc")
                             , function(f){
                               if(file.exists(f)){
                                 return(f)
                               } else {
                                 stop("these subjects have not been processed with MAGeT")
                               }
-                            }))
+                            })
+                    , Labels
+                      ))
 
     scans <-
       full_data %>%
