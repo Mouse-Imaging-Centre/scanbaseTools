@@ -222,7 +222,7 @@ upload_study <- function(ppd, scan, study, treatments, genotypes
   sb <- read_scanbase(db)
   pp <- load_pydpiper_results(ppd, common, mask = mask, clobber = clobber)
   
-  scanf <- read.csv(scan, stringsAsFactors = FALSE)
+  scanf <- read.csv(scan, stringsAsFactors = FALSE) %>% mutate(Mouse_ID = as.character(Mouse_ID))
   studf <- read.csv(study, stringsAsFactors = FALSE) %>% bind_cols(pp$study)
   treatf <- read.csv(treatments, stringsAsFactors = FALSE)
   genef <- read.csv(genotypes, stringsAsFactors = FALSE)
