@@ -247,13 +247,28 @@ upload_study <- function(ppd, scan, study, treatments, genotypes
   # Merge the pydpiper results with the scan frame
   scanf_merged <- inner_join(scanf, pp$scans, by = "Distortion_Corrected_Scan")
 
-  if(nrow(scanf_merged) != nrow(pp$scans))
-    stop("Scans present in the pydpiper directory were not merged successfully, "
-       , "this potentially indicates a problem with you scan metadata")
+  if(nrow(scanf_merged) != nrow(scanf)){
+    cat("Failed to merge pydpiper results with your scan sheet, trying resolving symlinks")
 
-  if(nrow(scanf_merged) != nrow(scanf))
-    stop("Scans present in the scan metadata were not in your pydpiper results, "
-       , "this potentially indicates a problem with you scan metadata")
+    scanf_merged <-
+      pp$scans %>%
+      mutate(Distortion_Corrected_Scan =
+               map_chr(Distortion_Corrected_Scan, ~ system(paste("readlink -f", .), intern = TRUE))) %>%
+      inner_join(scanf, . , by = "Distortion_Corrected_Scan")
+
+    if(nrow(scanf_merged) != nrow(scanf))
+      stop("Scans present in the pydpiper directory were not merged successfully, "
+         , "this potentially indicates a problem with you scan metadata")    
+  }
+
+  if(nrow(scanf_merged) != nrow(pp$scans)){
+    choice <- readline("There were scans found in your pydpiper directory that aren't in your scan sheet. Proceed? [Y/n]")
+    while(! choice %in% c("", "Y", "y")){      
+      if(choice == "n") stop("Aborting")
+      choice <- readline("Please answer y or n")
+    }
+  }
+   
 
   if(is.null(scanf_merged$POND_Mouse_ID))
     scanf_merged$POND_Mouse_ID <-
