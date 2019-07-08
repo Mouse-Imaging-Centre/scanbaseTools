@@ -420,7 +420,7 @@ compute_inverse_determinants <-
     output_path <- glue("{output}_log_{type}_abs_fwhm{fwhm}.mnc")
     
     if(file.exists(output_path) && !clobber)
-      return(invisible(output))
+      return(invisible(output_path))
     
     cmd <- 
       glue("compute_determinant.py --transform {xfm} "
