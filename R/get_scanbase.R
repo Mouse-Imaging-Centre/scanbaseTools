@@ -1,9 +1,8 @@
 #' @param db The google sheet title.
 #' @export
 read_scanbase <- function(db = "test_scanbase_40um"){
-  sbase <- googlesheets::gs_title(db)
   tfile <- tempfile(fileext = ".xlsx")
-  gs_download(sbase, to = tfile)
+  googledrive::drive_download(db, path = tfile)
   list(scans = readxl::read_excel(tfile, "Scans")
      , studies = readxl::read_excel(tfile, "Studies")
      , genotypes = readxl::read_excel(tfile, "Genotypes")
@@ -284,9 +283,11 @@ upload_study <- function(ppd, scan, study, treatments, genotypes
   new_studies <- bind_rows(sb$studies, studf) %>% tail(nrow(studf))
   new_treatments <- bind_rows(sb$treatments, treatf) %>% tail(nrow(treatf))
   new_genotypes <- bind_rows(sb$genotypes, genef) %>% tail(nrow(genef))
-       
-  sbase <- googlesheets::gs_title(db)
-  token <- googlesheets::gs_token()
+
+  sheet <- googlesheets4::sheets_find(db) %>% filter(name == db)
+  if(nrow(sheet) != 1) stop("Sheet ", db, " not found")
+  id <- sheet$id[1]
+  token <- googlesheets4::sheets_token()
 
   upload_sheet <- function(new, old, name){
     col <- cellranger::num_to_letter(ncol(old))
@@ -302,9 +303,9 @@ upload_study <- function(ppd, scan, study, treatments, genotypes
 
     httr::PUT(
             glue("https://sheets.googleapis.com/v4/spreadsheets/"
-               , "{sbase$sheet_key}/"
+               , "{id}/"
                , "values/{range_ref}?valueInputOption=USER_ENTERED")
-          , httr::config(token = token)
+          , token
           , body = jsonlite::toJSON(body, auto_unbox = TRUE))
             
   }
