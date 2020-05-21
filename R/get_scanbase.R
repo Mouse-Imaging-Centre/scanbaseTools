@@ -169,12 +169,13 @@ load_pydpiper_results <-
     
     get_study_to_global_xfm <- function(){
       xfm <- full_data$overall_xfm_to_common[1]
-
+      xfm_dir <- dirname(xfm)
+      
       files <-
         xfm %>%
         scan(what = character(), quiet = TRUE) %>%
         grep("*.mnc", ., value = TRUE) %>%
-        file.path(ppd, .) %>%
+        file.path(xfm_dir, .) %>%
         c(xfm, .)
 
       print(files)
