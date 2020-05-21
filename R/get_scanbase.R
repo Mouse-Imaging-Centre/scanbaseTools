@@ -430,6 +430,7 @@ compute_inverse_determinants <-
          , "--like {like} --mask {mask} "
          , "{if(type == 'rel') '--non-linear-only' else ''} "
          , "--temp-dir {tempdir} "
+         , "--log "
          , "--determinant {output_path}"
            )
 
