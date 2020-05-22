@@ -1,2 +1,4 @@
 ^LICENSE\.md$
 ^\.httr-oauth$
+^.*\.Rproj$
+^\.Rproj\.user$
