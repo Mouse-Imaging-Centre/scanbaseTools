@@ -430,7 +430,7 @@ compute_inverse_determinants <-
     if(!grepl("^/", output))
       output <- file.path(dirname(xfm), output)
 
-    output_path <- glue("{output}_log_{type}_abs_fwhm{fwhm}.mnc")
+    output_path <- glue("{output}_log_{type}_fwhm{fwhm}.mnc")
     
     if(file.exists(output_path) && !clobber)
       return(invisible(output_path))
