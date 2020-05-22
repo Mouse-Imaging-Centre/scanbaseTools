@@ -106,29 +106,40 @@ load_pydpiper_results <-
           map_chr(overall_xfm_to_common
                 , ~ global_from_concat(., "nlin3-to-global.xfm"
                                      , clobber = clobber
-                                    ,  dry = dry))) %>%
-      mutate(
-        Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians =
-          future_map2_chr(overall_xfm_to_common
-                       , basename(Processed_dir)
-                       , ~ compute_inverse_determinants(.x
-                                                      , "abs"
-                                                      , like = common
-                                                      , output = .y
-                                                      , mask = mask
-                                                      , clobber = clobber
-                                                      , dry = dry))
-      , Scan_To_Study_Global_Space_Resampled_Relative_Jacobians =
-          future_map2_chr(overall_xfm_to_common
-                       , basename(Processed_dir)
-                       , ~ compute_inverse_determinants(.x
-                                                      , "rel"
-                                                      , like = common
-                                                      , output = .y
-                                                      , mask = mask
-                                                      , clobber = clobber
-                                                      , dry = dry))
-      ) %>%
+                                    ,  dry = dry))) 
+    
+    
+    if(is.null(scans$Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians)){
+      scans <- scans %>%
+        mutate(Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians =
+                 future_map2_chr(overall_xfm_to_common
+                                 , basename(Processed_dir)
+                                 , ~ compute_inverse_determinants(.x
+                                                                  , "abs"
+                                                                  , like = common
+                                                                  , output = .y
+                                                                  , mask = mask
+                                                                  , clobber = clobber
+                                                                  , dry = dry))
+               )
+    }
+        
+    if(is.null(scans$Scan_To_Study_Global_Space_Resampled_Relative_Jacobians)){
+      scans <- scans %>%
+        mutate(Scan_To_Study_Global_Space_Resampled_Relative_Jacobians =
+                 future_map2_chr(overall_xfm_to_common
+                                 , basename(Processed_dir)
+                                 , ~ compute_inverse_determinants(.x
+                                                                  , "rel"
+                                                                  , like = common
+                                                                  , output = .y
+                                                                  , mask = mask
+                                                                  , clobber = clobber
+                                                                  , dry = dry))
+        )
+    } 
+    
+    scans <- scans %>%
       select(!!! map(names(column_mapping), as.symbol))
 
     
