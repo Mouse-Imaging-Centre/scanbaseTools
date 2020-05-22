@@ -109,9 +109,9 @@ load_pydpiper_results <-
                                     ,  dry = dry))) 
     
     
-    if(is.null(scans$Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians)){
+    if(is.null(scans$Scan_To_Global_Absolute_Jacobians)){
       scans <- scans %>%
-        mutate(Scan_To_Study_Global_Space_Resampled_Absolute_Jacobians =
+        mutate(Scan_To_Global_Absolute_Jacobians =
                  future_map2_chr(overall_xfm_to_common
                                  , basename(Processed_dir)
                                  , ~ compute_inverse_determinants(.x
@@ -124,9 +124,9 @@ load_pydpiper_results <-
                )
     }
         
-    if(is.null(scans$Scan_To_Study_Global_Space_Resampled_Relative_Jacobians)){
+    if(is.null(scans$Scan_To_Global_Relative_Jacobians)){
       scans <- scans %>%
-        mutate(Scan_To_Study_Global_Space_Resampled_Relative_Jacobians =
+        mutate(Scan_To_Global_Relative_Jacobians =
                  future_map2_chr(overall_xfm_to_common
                                  , basename(Processed_dir)
                                  , ~ compute_inverse_determinants(.x
