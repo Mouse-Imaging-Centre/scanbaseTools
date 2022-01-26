@@ -1,20 +1,12 @@
 # scanbaseTools
 
-The goal of scanbaseTools is to ...
+Internal MICe tools for uploading scan metadata to a Google sheet.
+
 
 ## Installation
 
-You can install the released version of scanbaseTools from [CRAN](https://CRAN.R-project.org) with:
+There are currently no official releases and packaging for CRAN is unlikely.  You can install the most recent version of scanbaseTools from [CRAN](https://CRAN.R-project.org) with:
 
 ``` r
-install.packages("scanbaseTools")
+devtools::install_github("Mouse-Imaging-Centre/scanbaseTools@main")
 ```
-
-## Example
-
-This is a basic example which shows you how to solve a common problem:
-
-``` r
-## basic example code
-```
-
