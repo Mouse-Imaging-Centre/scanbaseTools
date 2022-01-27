@@ -4,8 +4,7 @@
 \alias{global_from_concat}
 \title{((scan->nlin)->global) -> (nlin->global)}
 \usage{
-global_from_concat(scan_to_global, nlin_to_global, clobber = TRUE,
-  dry = FALSE)
+global_from_concat(scan_to_global, nlin_to_global, clobber = TRUE, dry = FALSE)
 }
 \arguments{
 \item{scan_to_global}{path to an xfm file composed of a nonlinear scan->nlin and a nonlinear
